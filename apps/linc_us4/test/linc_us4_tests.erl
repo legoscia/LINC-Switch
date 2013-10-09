@@ -93,6 +93,7 @@ with_ofconfig() ->
 default_switch_config(State) ->
     {"Test if the switch initial config is set correctly",
      fun() ->
+             ?debugHere,
              [begin
                   {_, ConfigReply, _} = linc_us4:ofp_get_config_request(
                                           State, #ofp_get_config_request{}),
@@ -105,6 +106,7 @@ default_switch_config(State) ->
 custom_switch_config(State) ->
     {"Test if the switch config is set correctly",
      fun() ->
+             ?debugHere,
              [begin
                   Flags = case random:uniform(1000) rem 5 of
                               0 -> [];
@@ -158,6 +160,7 @@ teardown(_) ->
     ok = application:stop(lager).
 
 config_request_reply_setup() ->
+    ?debugHere,
     mocked = linc_us4_test_utils:mock(?MOCKED),
 
     meck:new(linc_buffer),
@@ -167,10 +170,12 @@ config_request_reply_setup() ->
                 end).
 
 config_request_reply_teardown(_) ->
+    ?debugHere,
     unmocked = linc_us4_test_utils:unmock(?MOCKED),
     meck:unload(linc_buffer).
 
 mocked_us4_backend_setup() ->
+    ?debugHere,
     DummyBackendOpts = [ {Opt, dummy} || Opt <- [switch_id,
                                                  datapath_mac,
                                                  config] ],
