@@ -7,6 +7,5 @@ otp_release:
 before_script:
   - sudo apt-get install libpcap-dev
 
-# Use "make test" instead of default "rebar eunit", to exclude
-# linc_us3 tests.
-script: "make test"
+# try to narrow down the set of modules that cause the test failure:
+script: "make compile && ./rebar eunit skip_deps=true apps=linc,linc_us4 suites=linc_us4_queue_tests,linc_us4_tests"
