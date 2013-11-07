@@ -997,7 +997,7 @@ flow_mod_output_to_port(InPort, OutPort, MaxLen) ->
                             name = in_port,
                             value = <<InPort:32>>},
     Match = #ofp_match{fields = [MatchField]},
-    Action = case InPort =:= controller of
+    Action = case OutPort =:= controller of
                  true ->
                      #ofp_action_output{port = OutPort, max_len = MaxLen};
                  false ->
