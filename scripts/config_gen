@@ -28,6 +28,7 @@ usage_pattern(ScriptName) ->
     ScriptName ++ " [-s LOGICAL_SWITCH_ID [INTERFACE_NAME]]"
         " -c [[tcp|tls]:CONTROLLER_ADDRES:CONTROLLER_PORT]"
         " [-l CONTROLLERS_LISTENER_ADDRESS:PORT]"
+        " [-b BACKEND]"
         " -o OUTPUT_FILE".
 
 usage_example(ScriptName) ->
@@ -59,7 +60,9 @@ parse_args(["-c" | Rest], Config) ->
     parse_args(NewRest, [{controllers, Controllers} | Config]);
 parse_args(["-l" | Rest], Config) ->
     {ControllersListener, NewRest} = parse_controllers_listener(Rest),
-    parse_args(NewRest, [{controllers_listener, ControllersListener} | Config]).
+    parse_args(NewRest, [{controllers_listener, ControllersListener} | Config]);
+parse_args(["-b", Backend | Rest], Config) ->
+    parse_args(Rest, [{backend, Backend} | Config]).
 
 
 parse_interfaces(Args) ->
@@ -71,6 +74,7 @@ split_to_next_option(Args) ->
                                 andalso Element =/= "-o"
                                 andalso Element =/= "-c"
                                 andalso Element =/= "-l"
+                                andalso Element =/= "-b"
                     end, Args).
 
 parse_controllers(Args) ->
@@ -150,10 +154,16 @@ generate_ports(PortsMap) ->
 generate_logical_switches(ParsedConfig, PortsMap) ->
     {switches, Switches} = lists:keyfind(switches, 1, ParsedConfig),
     {controllers, Controllers} = lists:keyfind(controllers, 1, ParsedConfig),
+    case lists:keyfind(backend, 1, ParsedConfig) of
+        {backend, BackendS} ->
+            Backend = list_to_atom(BackendS);
+        false ->
+            Backend = linc_us4
+    end,
     [
      {switch, list_to_integer(SwitchId),
       [
-       {backend, linc_us4},
+       {backend, Backend},
        {controllers, generate_logical_switch_controllers(SwitchId, Controllers)},
        {controllers_listener,
         generate_logical_switch_controllers_listener(ParsedConfig)},
