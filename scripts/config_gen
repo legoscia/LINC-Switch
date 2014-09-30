@@ -89,18 +89,26 @@ parse_controllers_listener(Args) ->
     {list_to_tuple(string:tokens(ControllersListener, ":")), Rest}.
 
 generate_sys_config(ParsedConfig) ->
+    case lists:keyfind(backend, 1, ParsedConfig) of
+        {backend, BackendS} ->
+            Backend = list_to_atom(BackendS);
+        false ->
+            Backend = linc_us4
+    end,
     PortsNames = ports_names(ParsedConfig),
     PortsMap = lists:zip(PortsNames, lists:seq(1, length(PortsNames))),
+    {ExtraOptions, ExtraPorts} =
+        extra_options_ports(Backend, length(PortsNames) + 1, ParsedConfig),
     [
      {linc,
       [
        {of_config, enabled},
        {sync_routing, true},
-       {capable_switch_ports, generate_ports(PortsMap)},
+       {capable_switch_ports, generate_ports(PortsMap) ++ ExtraPorts},
        {capable_switch_queues, []},
        {logical_switches,
-        generate_logical_switches(ParsedConfig, PortsMap)}
-      ]},
+        generate_logical_switches(ParsedConfig, Backend, PortsMap, ExtraOptions)}
+      ] ++ ExtraOptions},
      {enetconf,
       [
        {capabilities, [{base, {1, 0}},
@@ -147,19 +155,36 @@ ports_names(ParsedConfig) ->
                         Ports ++ Acc
                 end, [], Switches).
 
+extra_options_ports(linc_us4_oe, MinPortNo, ParsedConfig) ->
+    {switches, Switches} = lists:keyfind(switches, 1, ParsedConfig),
+    OpticalPorts =
+        [{list_to_integer(SwitchId1), list_to_integer(SwitchId2)} ||
+            {SwitchId1, _} <- Switches, {SwitchId2, _} <- Switches,
+            SwitchId1 =/= SwitchId2],
+    OpticalPortsNumbered =
+        lists:zip(lists:seq(MinPortNo, MinPortNo + length(OpticalPorts) - 1),
+                  OpticalPorts),
+    OpticalPortLinks =
+        [case lists:keyfind({SwitchId2, SwitchId1}, 2, OpticalPortsNumbered) of
+             {PortNo2, {SwitchId2, SwitchId1}} ->
+                 {{SwitchId1, PortNo1}, {SwitchId2, PortNo2}}
+         end
+         || {PortNo1, {SwitchId1, SwitchId2}} <- OpticalPortsNumbered,
+            SwitchId1 < SwitchId2],
+    {
+      [{optical_links, OpticalPortLinks}],
+      [{port, PortNo, [{type, optical}, {interface, ""}]}
+       || {PortNo, _} <- OpticalPortsNumbered]
+    };
+extra_options_ports(_Backend, _MinPortNo, _ParsedConfig) ->
+    {[], []}.
 
 generate_ports(PortsMap) ->
     [{port, PortNo, [{interface, PortName}]} || {PortName, PortNo} <- PortsMap].
 
-generate_logical_switches(ParsedConfig, PortsMap) ->
+generate_logical_switches(ParsedConfig, Backend, PortsMap, ExtraOptions) ->
     {switches, Switches} = lists:keyfind(switches, 1, ParsedConfig),
     {controllers, Controllers} = lists:keyfind(controllers, 1, ParsedConfig),
-    case lists:keyfind(backend, 1, ParsedConfig) of
-        {backend, BackendS} ->
-            Backend = list_to_atom(BackendS);
-        false ->
-            Backend = linc_us4
-    end,
     [
      {switch, list_to_integer(SwitchId),
       [
@@ -168,7 +193,8 @@ generate_logical_switches(ParsedConfig, PortsMap) ->
        {controllers_listener,
         generate_logical_switch_controllers_listener(ParsedConfig)},
        {queues_status, disabled},
-       {ports, generate_logical_switch_ports(PortsNames, PortsMap)}
+       {ports, generate_logical_switch_ports(PortsNames, PortsMap)
+        ++ extra_logical_switch_ports(Backend, list_to_integer(SwitchId), ExtraOptions)}
       ]}
      || {SwitchId, PortsNames} <- Switches].
 
@@ -191,3 +217,12 @@ generate_logical_switch_controllers_listener(ParsedConfig) ->
 generate_logical_switch_ports(PortsNames, PortsMap) ->
     [{port, element(2, lists:keyfind(PortName, 1, PortsMap)), [{queues, []}]}
      || PortName <- PortsNames].
+
+extra_logical_switch_ports(linc_us4_oe, SwitchId, ExtraOptions) ->
+    {optical_links, OpticalLinks} = lists:keyfind(optical_links, 1, ExtraOptions),
+    [{port, PortNo, [{queues, []}]}
+     || OpticalLink <- OpticalLinks,
+        {TheSwitchId, PortNo} <- tuple_to_list(OpticalLink),
+        TheSwitchId =:= SwitchId];
+extra_logical_switch_ports(_Backend, _SwitchId, _ExtraOptions) ->
+    [].
